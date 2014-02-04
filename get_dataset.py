@@ -1,5 +1,8 @@
 # Given a config file, download, and convert to .wav the audio.
 # example config file: echo "english 20\nfrench 15" > test.conf
+
+# Note: The raw audio is also available by request at accent@gmu.edu
+# distributed via dropbox.
 from multiprocessing import Pool
 import subprocess
 import argparse
@@ -65,6 +68,7 @@ def gen_work_units(job_iter, max_work=30):
 
 def parse_file(path):
     return {lang: v for lang, v in gen_parse_file(path)}
+
 
 def gen_parse_file(path):
     with open(path, 'r') as f:
