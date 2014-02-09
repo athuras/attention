@@ -19,7 +19,7 @@ def normalize_data(x):
 def resample(x, fs, rate=22050):
     '''Resample MONO signal to rate.
     returns (resmaple(signal), new_fs)'''
-    fav = rate / fs
+    fac = rate / fs
     return (signal.resample(x, x.size * fac), rate)
 
 
