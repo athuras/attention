@@ -31,13 +31,11 @@ def gen_extract_mel(data_streams, *args):
 
 
 # Voice Filtering #############################################################
-# ???? Phoneme detection is hard ...
-# Might try to filter out 'calm' periods in the recording and hope that it
-# helps accuracy.
+
 
 # K-Means Clustering ##########################################################
 
-def cluster_centroids(x, k=8, max_iter=300, km_kwargs={}):
+def cluster_centroids(x, k=32, max_iter=300, km_kwargs={}):
     '''Return norm-ordered centroids'''
     km = KMeans(k, init='k-means++', max_iter=300, **km_kwargs)
     trained = km.fit(x)
