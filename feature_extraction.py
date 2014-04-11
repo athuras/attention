@@ -1,72 +1,82 @@
 # Script for batch feature extraction and archival.
-import numpy as np
-import multiprocessing
-import argparse
-from collections import Counter
+from collections import namedtuple
+from features import filtered_mfcc_centroid
 from itertools import ifilter
+from multiprocessing import Pool
 from scipy.io import wavfile
+from scipy.signal import resample
+import argparse
+import numpy as np
+import re
+import subprocess
+import time
 
 
-_SPLITTER = re.compile('([a-zA-Z_]*(\d*)(\.\D*)', re.IGNORECARE)
+#  take "english23.extension" and parse into "english", 23, ".wav.mpeg"
+_SPLITTER = re.compile('([a-zA-Z_]*)(\d+)(\..*)', re.IGNORECASE)
+FileName = namedtuple('FileName', ['lang', 'num', 'ext'])
 
+def main(data_dir, output_dir, num_workers=2):
+    # Get the files to process
+    filenames = tasklist_iter('data/')
+    pool = Pool(processes=num_workers)
+    result = pool.map_async(composition, filenames)
+    result.get()
+    print "it is done."
 
-def main(args):
-    '''Extract features on the files in raw_audio_dir.
-    Accumulate them, and write to disk as np.arrays of
-    size (n, v), where n = num_of_samples, v = length of feature vector
-    '''
-    pass
-
-
-# Get the accumulated language stats ##########################################
+#  Get the accumulated language stats #########################################
 def fn_parser(term):
     '''Get the language'''
     lang, num, ext = _SPLITTER.findall(term)[0]
     return lang, num, ext
 
-
-def process_file_list(directory, parser):
-    '''Take no prisoners, only accept .wav files,
-    returns a Histogram of language representation'''
+def tasklist_iter(directory, parser=fn_parser):
+    '''Takes a directory, outputs a generator of parsed filenames'''
     fn_check = lambda x: not (x == 'error' or len(x) == 1)
-    q = subprocess.check_output(['ls' + directory + '| grep .wav'])
-    parsed = (parser(l)[0] for l in q.splitlines())
-    filtered = ifilter(fn_check, parsed)
-    return Counter(filtered)
+    ls = subprocess.Popen(('ls', directory), stdout=subprocess.PIPE)
+    q = subprocess.check_output(('grep', '.wav'), stdin=ls.stdout)
+    ls.wait()
+    filtered_filenames = ifilter(fn_check, (parser(l) for l in q.splitlines()))
+    return (FileName(*x) for x in filtered_filenames)
 
-
-# Generate Tasks ##############################################################
-def gen_task(term, max_work=10):
-    '''Split histogram into manageable pieces:
-    yields (lang, start_index, number) tuples that correspond to data files'''
-    for lang, num in term:
-        start = 1
-        while num > 0:
-            inc = min(num, max_work)
-            yield lang, start, inc
-            num -= inc
-            start += inc
-
-
-# Process Task ################################################################
-def make_fn(lang, i, ext='.wav'):
-    return lang + str(i) + ext
-
-
-def task_to_file_iter(task):
-    '''Divide the given task into its constituent jobs.
-    Return iterator over filenames'''
-    lang, start, num = task
-    return (make_fn(lang, i) for i in xrange(start, start + num))
-
-
+#  Process Task ###############################################################
 def read_to_array(fn, fs=22050):
-    '''Read the file at fn, and downsample to 22kHz mono'''
+    '''Read the file at fn, and downsample to 'fs' Hz mono'''
     dfs, data = wavfile.read(fn)
     fac = fs / dfs
-    downsampled = signal.resample(data, data.size * fac)
+    downsampled = resample(data, data.size * fac)
     return downsampled / 16.
 
+def process_audio(x, fs=22050):
+    '''Extract the Feature!'''
+    return filtered_mfcc_centroid(x, fs, 10)
 
-def extract_feature(x, *args, **kwargs):
-    pass
+#  Disk-ops  ##################################################################
+def fn_to_string(fn, with_ext=True):
+    if with_ext:
+        return fn.lang + str(fn.num) + fn.ext
+    else:
+        return fn.lang + str(fn.num)
+
+def composition(fn_tuple, fs=22050):
+    in_filename = 'data/' + fn_to_string(fn_tuple)
+    out_filename = 'processed/' + fn_to_string(fn_tuple, with_ext=False)
+    raw_audio = read_to_array(in_filename, fs=fs)
+    tone_pallette = process_audio(raw_audio, fs=fs)
+    np.save(out_filename, tone_pallette)
+    print time.ctime, in_filename, ' -> ', out_filename
+
+if __name__ == '__main__':
+    desc = '''
+    Given a directory of raw audio (*.wav) files, extract tone-pallettes.
+    '''
+    parser = argparse.ArgumentParser(description=desc)
+    parser.add_argument('data_directory', type=str,
+            help="Directory containing the raw audio files in .wav format")
+    parser.add_argument('output_directory', type=str,
+            help="Directory to place the resulting .npy binary files")
+    parser.add_argument('--num_workers', type=int, default=2,
+            help="Limit the number of worker processes")
+    args = parser.parse_args()
+    main(args.data_directory, args.output_directory, limit=args.num_workers)
+    main()
