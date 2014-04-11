@@ -1,7 +1,7 @@
 # Script for batch feature extraction and archival.
 from collections import namedtuple
 from features import filtered_mfcc_centroid
-from itertools import ifilter
+from itertools import ifilter, imap
 from multiprocessing import Pool
 from scipy.io import wavfile
 from scipy.signal import resample
@@ -21,7 +21,9 @@ def main(data_dir, output_dir, num_workers=2):
     filenames = tasklist_iter('data/')
     pool = Pool(processes=num_workers)
     result = pool.map_async(composition, filenames)
-    result.get()
+    status = result.get()
+    with open('feature_extraction.log') as f:
+        f.writelines(imap(str, status))
     print "it is done."
 
 #  Get the accumulated language stats #########################################
@@ -59,12 +61,17 @@ def fn_to_string(fn, with_ext=True):
         return fn.lang + str(fn.num)
 
 def composition(fn_tuple, fs=22050):
-    in_filename = 'data/' + fn_to_string(fn_tuple)
-    out_filename = 'processed/' + fn_to_string(fn_tuple, with_ext=False)
-    raw_audio = read_to_array(in_filename, fs=fs)
-    tone_pallette = process_audio(raw_audio, fs=fs)
-    np.save(out_filename, tone_pallette)
-    print time.ctime, in_filename, ' -> ', out_filename
+    try:
+        in_filename = 'data/' + fn_to_string(fn_tuple)
+        out_filename = 'processed/' + fn_to_string(fn_tuple, with_ext=False)
+        raw_audio = read_to_array(in_filename, fs=fs)
+        tone_pallette = process_audio(raw_audio, fs=fs)
+        np.save(out_filename, tone_pallette)
+        print time.ctime(), in_filename, ' -> ', out_filename
+        return in_filename
+    except ValueError as err:
+        return err
+
 
 if __name__ == '__main__':
     desc = '''
@@ -78,5 +85,5 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=2,
             help="Limit the number of worker processes")
     args = parser.parse_args()
-    main(args.data_directory, args.output_directory, limit=args.num_workers)
+    main(args.data_directory, args.output_directory, num_workers=args.num_workers)
     main()
