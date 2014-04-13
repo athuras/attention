@@ -16,7 +16,7 @@ Accent recognition, for great justice.
 ### feature\_extraction.py
 1. Parses the files in /data (from get\_dataset.py)
 2. Extracts features (mfcc, et al.) from /data,
-3. writes as serialized numpy arrays to /patterns.
+3. writes as serialized numpy arrays to /processed.
 
 ## Notebooks
 
