@@ -1,6 +1,7 @@
 # Script for batch feature extraction and archival.
 from collections import namedtuple
 from features import filtered_mfcc_centroid
+from functools import partial
 from itertools import ifilter, imap
 from multiprocessing import Pool
 from scipy.io import wavfile
@@ -18,11 +19,15 @@ FileName = namedtuple('FileName', ['lang', 'num', 'ext'])
 
 def main(data_dir, output_dir, num_workers=2):
     # Get the files to process
-    filenames = tasklist_iter('data/')
+    filenames = tasklist_iter(data_dir)
     pool = Pool(processes=num_workers)
-    result = pool.map_async(composition, filenames)
+    do_work = partial(composition,
+                    fs=22050,
+                    input_dir=data_dir,
+                    output_dir=output_dir)
+    result = pool.map_async(do_work, filenames)
     status = result.get()
-    with open('feature_extraction.log') as f:
+    with open('feature_extraction.log', 'w') as f:
         f.writelines(imap(str, status))
     print "it is done."
 
@@ -60,10 +65,12 @@ def fn_to_string(fn, with_ext=True):
     else:
         return fn.lang + str(fn.num)
 
-def composition(fn_tuple, fs=22050):
+def composition(fn_tuple, fs=22050, **kwargs):
+    input_dir = kwargs.get('input_dir', 'data/')
+    out_dir = kwargs.get('output_dir', 'processed/')
     try:
-        in_filename = 'data/' + fn_to_string(fn_tuple)
-        out_filename = 'processed/' + fn_to_string(fn_tuple, with_ext=False)
+        in_filename = input_dir + fn_to_string(fn_tuple)
+        out_filename = output_dir + fn_to_string(fn_tuple, with_ext=False)
         raw_audio = read_to_array(in_filename, fs=fs)
         tone_pallette = process_audio(raw_audio, fs=fs)
         np.save(out_filename, tone_pallette)
