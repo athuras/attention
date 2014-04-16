@@ -17,14 +17,15 @@ import time
 _SPLITTER = re.compile('([a-zA-Z_]*)(\d+)(\..*)', re.IGNORECASE)
 FileName = namedtuple('FileName', ['lang', 'num', 'ext'])
 
-def main(data_dir, output_dir, num_workers=2):
+def main(data_dir, output_dir, archive_dir, num_workers=2):
     # Get the files to process
     filenames = tasklist_iter(data_dir)
     pool = Pool(processes=num_workers)
     do_work = partial(composition,
                     fs=22050,
                     input_dir=data_dir,
-                    output_dir=output_dir)
+                    output_dir=output_dir,
+                    archive_dir=archive_dir)
     result = pool.map_async(do_work, filenames)
     status = result.get()
     with open('feature_extraction.log', 'w') as f:
@@ -47,11 +48,20 @@ def tasklist_iter(directory, parser=fn_parser):
     return (FileName(*x) for x in filtered_filenames)
 
 #  Process Task ###############################################################
+def pad_to_nearest_2pow(x):
+    desired_size = 2**int(np.ceil(np.log2(x.size)))
+    padding = np.zeros(desired_size - x.size)
+    return np.concatenate((x, padding), axis=0)
+
 def read_to_array(fn, fs=22050):
     '''Read the file at fn, and downsample to 'fs' Hz mono'''
     dfs, data = wavfile.read(fn)
-    fac = fs / dfs
-    downsampled = resample(data, data.size * fac)
+    # WARNING: this is a hack to make sure the downsampling is fast
+    # this WILL introduce high-frequency components, however they should
+    # vanish after downsampling.
+    data = pad_to_nearest_2pow(data)
+    new_size = int(data.size * fs / float(dfs))
+    downsampled = resample(data, new_size)
     return downsampled / 16.
 
 def process_audio(x, fs=22050):
@@ -65,15 +75,21 @@ def fn_to_string(fn, with_ext=True):
     else:
         return fn.lang + str(fn.num)
 
+def move_when_done(in_filename, archive_dir='data_archive/'):
+    ''' Runs: $(mv in_filename archive_dir)'''
+    subprocess.check_output(('mv', in_filename, archive_dir))
+
 def composition(fn_tuple, fs=22050, **kwargs):
     input_dir = kwargs.get('input_dir', 'data/')
-    out_dir = kwargs.get('output_dir', 'processed/')
+    output_dir = kwargs.get('output_dir', 'processed/')
+    archive_dir = kwargs.get('archive_dir', 'data_archive/')
     try:
         in_filename = input_dir + fn_to_string(fn_tuple)
         out_filename = output_dir + fn_to_string(fn_tuple, with_ext=False)
         raw_audio = read_to_array(in_filename, fs=fs)
         tone_pallette = process_audio(raw_audio, fs=fs)
         np.save(out_filename, tone_pallette)
+        move_when_done(in_filename, archive_dir)
         print time.ctime(), in_filename, ' -> ', out_filename
         return in_filename
     except ValueError as err:
@@ -89,8 +105,11 @@ if __name__ == '__main__':
             help="Directory containing the raw audio files in .wav format")
     parser.add_argument('output_directory', type=str,
             help="Directory to place the resulting .npy binary files")
+    parser.add_argument('--archive_directory', type=str, default='data_archive/',
+            help='Directory to move raw files to once processed (for waypointing)')
     parser.add_argument('--num_workers', type=int, default=2,
             help="Limit the number of worker processes")
     args = parser.parse_args()
-    main(args.data_directory, args.output_directory, num_workers=args.num_workers)
+    main(args.data_directory, args.output_directory,
+            args.archive_directory, num_workers=args.num_workers)
     main()
