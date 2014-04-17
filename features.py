@@ -33,7 +33,7 @@ def norm_ordered_centroids(x, km_kwargs={}):
 
 
 def filtered_mfcc_centroid(x, fs, filter_percentile=10,
-                           kmeans_kwargs={'n_clusters':40, 'max_iter': 500, 'batch_size': 100000,
+                           kmeans_kwargs={'n_clusters':40, 'max_iter': 250, 'batch_size': 100000,
                                'compute_labels': False},
                            mfcc_kwargs={'nwin':256, 'nfft':512, 'nceps':14}):
     '''Generates the centroids of the MFCC spectrogram of the signal x.
