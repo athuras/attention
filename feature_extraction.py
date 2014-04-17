@@ -14,7 +14,7 @@ import time
 
 
 #  take "english23.extension" and parse into "english", 23, ".wav.mpeg"
-_SPLITTER = re.compile('([a-zA-Z_]*)(\d+)(\..*)', re.IGNORECASE)
+_SPLITTER = re.compile('([a-zA-Z_\s]*)(\d+)(\..*)', re.IGNORECASE)
 FileName = namedtuple('FileName', ['lang', 'num', 'ext'])
 
 def main(data_dir, output_dir, archive_dir, num_workers=2):
@@ -26,8 +26,9 @@ def main(data_dir, output_dir, archive_dir, num_workers=2):
                     input_dir=data_dir,
                     output_dir=output_dir,
                     archive_dir=archive_dir)
-    result = pool.map_async(do_work, filenames)
+    result = pool.map_async(do_work, filenames, chunksize=6)
     status = result.get()
+    pool.close()
     with open('feature_extraction.log', 'w') as f:
         f.writelines(imap(str, status))
     print "it is done."
@@ -35,7 +36,9 @@ def main(data_dir, output_dir, archive_dir, num_workers=2):
 #  Get the accumulated language stats #########################################
 def fn_parser(term):
     '''Get the language'''
-    lang, num, ext = _SPLITTER.findall(term)[0]
+    lang, num, ext = _SPLITTER.findall(term.strip())[0]
+    if ' ' in lang:
+        print "WARNING: space found in filename: %s" % lang + num + ext
     return lang, num, ext
 
 def tasklist_iter(directory, parser=fn_parser):
@@ -56,6 +59,8 @@ def pad_to_nearest_2pow(x):
 def read_to_array(fn, fs=22050):
     '''Read the file at fn, and downsample to 'fs' Hz mono'''
     dfs, data = wavfile.read(fn)
+    if len(data.shape) >= 2:
+        data = data[..., 0]
     # WARNING: this is a hack to make sure the downsampling is fast
     # this WILL introduce high-frequency components, however they should
     # vanish after downsampling.
@@ -112,4 +117,3 @@ if __name__ == '__main__':
     args = parser.parse_args()
     main(args.data_directory, args.output_directory,
             args.archive_directory, num_workers=args.num_workers)
-    main()
