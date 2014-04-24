@@ -1,4 +1,4 @@
-from sklearn.cluster import MiniBatchKMeans
+from sklearn.cluster import MiniBatchKMeans, KMeans
 from scikits.talkbox.features import mfcc
 import numpy as np
 
@@ -31,11 +31,19 @@ def norm_ordered_centroids(x, km_kwargs={}):
     ind = np.argsort(np.linalg.norm(centroids, axis=1))
     return centroids[ind]
 
+def pop_ordered_centroids(x, km_kwargs={}):
+    '''Hack for now, hopefully it makes everything better...'''
+    km = KMeans(**km_kwargs)
+    trained = km.fit(x)
+    centroids = trained.cluster_centers_
+    popularity = np.bincount(trained.labels_)
+    ind = np.argsort(popularity)
+    return centroids[ind]
 
 def filtered_mfcc_centroid(x, fs, filter_percentile=10,
-                           kmeans_kwargs={'n_clusters':40, 'max_iter': 250, 'batch_size': 100000,
-                               'compute_labels': False},
-                           mfcc_kwargs={'nwin':256, 'nfft':512, 'nceps':14}):
+        kmeans_kwargs={'n_clusters': 30, 'max_iter': 1000,
+            'precompute_distances': True},
+        mfcc_kwargs={'nwin':256, 'nfft':512, 'nceps':14}):
     '''Generates the centroids of the MFCC spectrogram of the signal x.
     1. Collect MFCC coefficients based on mfcc_kwargs,
     2. Calculate the deltas from MFCCs
@@ -46,5 +54,5 @@ def filtered_mfcc_centroid(x, fs, filter_percentile=10,
     features = stack_double_deltas(MFCCs)
     if filter_percentile != 0:
         features = low_energy_filter(features, filter_percentile)
-    centroids = norm_ordered_centroids(features, km_kwargs=kmeans_kwargs)
+    centroids = pop_ordered_centroids(features, km_kwargs=kmeans_kwargs)
     return centroids
